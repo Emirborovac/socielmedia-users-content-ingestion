@@ -1,0 +1,13 @@
+Flask
+Flask-SQLAlchemy
+undetected-chromedriver
+selenium
+webdriver-manager
+beautifulsoup4
+lxml
+yt-dlp
+requests
+psutil
+gunicorn
+fastapi
+uvicorn

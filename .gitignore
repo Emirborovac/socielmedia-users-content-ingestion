@@ -1,0 +1,7 @@
+venv/
+logs/
+debugger-screenshots/
+*.log
+*.sqlite3
+*.db
+__pycache__/

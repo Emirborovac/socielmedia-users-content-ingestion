@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Add Account - Links Scraper v2{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">ADD ACCOUNT</h1>
+    <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">VIEW ACCOUNTS</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">SINGLE ACCOUNT</div>
+        <div class="card-body">
+            <form id="single-form">
+                <div class="form-group">
+                    <label class="form-label">SOCIAL MEDIA URL</label>
+                    <input type="url" class="form-input" id="single-url" placeholder="https://www.instagram.com/username" required>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 0;">
+                    <div style="font-size: 12px; color: #000000; text-transform: uppercase; letter-spacing: 0.5px;">
+                        SUPPORTED: INSTAGRAM • TIKTOK • X/TWITTER • FACEBOOK • YOUTUBE
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="single-btn" style="width: 100%; margin-top: 24px;">
+                    ADD ACCOUNT
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">BULK UPLOAD CSV</div>
+        <div class="card-body">
+            <form id="csv-form">
+                <div class="form-group">
+                    <label class="form-label">CSV FILE</label>
+                    <input type="file" class="form-input" id="csv-file" accept=".csv" required>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 0;">
+                    <div style="font-size: 12px; color: #000000; text-transform: uppercase; letter-spacing: 0.5px;">
+                        FORMAT: FIRST COLUMN MUST BE "URL"<br>
+                        EXAMPLE: URL<br>
+                        HTTPS://WWW.INSTAGRAM.COM/USER1<br>
+                        HTTPS://WWW.TIKTOK.COM/@USER2
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="csv-btn" style="width: 100%; margin-top: 24px;">
+                    UPLOAD CSV
+                </button>
+            </form>
+            
+            <div id="csv-preview" style="display: none; margin-top: 30px;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 20px; color: #000000;">PREVIEW</div>
+                <div id="csv-content"></div>
+                <div class="btn-group" style="margin-top: 20px; width: 100%;">
+                    <button class="btn btn-primary" id="confirm-csv" style="flex: 1;">CONFIRM UPLOAD</button>
+                    <button class="btn btn-secondary" id="cancel-csv" style="flex: 1;">CANCEL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="results" style="display: none;" class="card mt-4">
+    <div class="card-header">UPLOAD RESULTS</div>
+    <div class="card-body" id="results-content"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let csvData = [];
+
+document.getElementById('single-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const btn = document.getElementById('single-btn');
+    const url = document.getElementById('single-url').value.trim();
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> ADDING...';
+    
+    fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            showAlert(data.error.toUpperCase(), 'error');
+        } else {
+            showAlert(`ACCOUNT ADDED: ${data.username.toUpperCase()} (${data.platform.toUpperCase()})`);
+            document.getElementById('single-url').value = '';
+        }
+    })
+    .catch(error => {
+        showAlert('ERROR ADDING ACCOUNT', 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = 'ADD ACCOUNT';
+    });
+});
+
+document.getElementById('csv-file').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        parseCSV(e.target.result);
+    };
+    reader.readAsText(file);
+});
+
+function parseCSV(csv) {
+    const lines = csv.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+        showAlert('CSV MUST HAVE HEADER AND AT LEAST ONE ROW', 'error');
+        return;
+    }
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const urlIndex = headers.indexOf('url');
+    
+    if (urlIndex === -1) {
+        showAlert('CSV MUST HAVE "URL" COLUMN', 'error');
+        return;
+    }
+    
+    csvData = [];
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        const url = values[urlIndex];
+        
+        if (url) {
+            const platform = detectPlatform(url);
+            csvData.push({
+                url: url,
+                platform: platform,
+                valid: platform !== 'unknown'
+            });
+        }
+    }
+    
+    showCSVPreview();
+}
+
+function detectPlatform(url) {
+    url = url.toLowerCase();
+    if (url.includes('instagram.com')) return 'instagram';
+    if (url.includes('tiktok.com')) return 'tiktok';
+    if (url.includes('x.com') || url.includes('twitter.com')) return 'x';
+    if (url.includes('facebook.com')) return 'facebook';
+    if (url.includes('youtube.com')) return 'youtube';
+    return 'unknown';
+}
+
+function showCSVPreview() {
+    const preview = document.getElementById('csv-preview');
+    const content = document.getElementById('csv-content');
+    
+    let html = '<table class="table"><tr><th>URL</th><th>PLATFORM</th><th>STATUS</th></tr>';
+    
+    csvData.forEach(item => {
+        const status = item.valid ? 
+            '<span class="badge badge-success">VALID</span>' : 
+            '<span class="badge badge-danger">INVALID</span>';
+        
+        html += `<tr>
+            <td style="font-size: 12px;">${item.url}</td>
+            <td><span class="badge badge-info">${item.platform.toUpperCase()}</span></td>
+            <td>${status}</td>
+        </tr>`;
+    });
+    
+    html += '</table>';
+    content.innerHTML = html;
+    preview.style.display = 'block';
+    
+    const valid = csvData.filter(item => item.valid).length;
+    showAlert(`FOUND ${valid} VALID URLS OUT OF ${csvData.length} TOTAL`);
+}
+
+document.getElementById('confirm-csv').addEventListener('click', function() {
+    const validAccounts = csvData.filter(item => item.valid);
+    
+    if (validAccounts.length === 0) {
+        showAlert('NO VALID ACCOUNTS TO UPLOAD', 'error');
+        return;
+    }
+    
+    this.disabled = true;
+    this.innerHTML = '<span class="loading"></span> UPLOADING...';
+    
+    fetch('/api/accounts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accounts: validAccounts })
+    })
+    .then(response => response.json())
+    .then(data => {
+        showResults(data);
+        document.getElementById('csv-preview').style.display = 'none';
+        document.getElementById('csv-form').reset();
+        csvData = [];
+    })
+    .catch(error => {
+        showAlert('ERROR UPLOADING ACCOUNTS', 'error');
+    })
+    .finally(() => {
+        this.disabled = false;
+        this.innerHTML = 'CONFIRM UPLOAD';
+    });
+});
+
+document.getElementById('cancel-csv').addEventListener('click', function() {
+    document.getElementById('csv-preview').style.display = 'none';
+    document.getElementById('csv-form').reset();
+    csvData = [];
+});
+
+function showResults(data) {
+    const results = document.getElementById('results');
+    const content = document.getElementById('results-content');
+    
+    let html = `
+        <div class="grid grid-2" style="margin-bottom: 30px;">
+            <div class="text-center">
+                <div style="font-size: 36px; color: #1e3a8a; font-weight: 600;">${data.total_added}</div>
+                <div style="font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">SUCCESSFULLY ADDED</div>
+            </div>
+            <div class="text-center">
+                <div style="font-size: 36px; color: #000000; font-weight: 600;">${data.total_errors}</div>
+                <div style="font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">ERRORS</div>
+            </div>
+        </div>
+    `;
+    
+    if (data.errors && data.errors.length > 0) {
+        html += '<div style="font-size: 16px; font-weight: 600; margin-bottom: 20px; color: #000000;">ERRORS</div>';
+        html += '<table class="table"><tr><th>URL</th><th>ERROR</th></tr>';
+        data.errors.forEach(error => {
+            html += `<tr><td style="font-size: 12px;">${error.url}</td><td style="color: #000000; font-size: 12px;">${error.error}</td></tr>`;
+        });
+        html += '</table>';
+    }
+    
+    content.innerHTML = html;
+    results.style.display = 'block';
+    
+    if (data.total_added > 0) {
+        showAlert(`SUCCESSFULLY ADDED ${data.total_added} ACCOUNTS`);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}{{ account.username }} Links - Links Scraper v2{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ account.username.upper() }}</h1>
+        <div class="flex gap-2" style="margin-top: 12px;">
+            <span class="badge badge-info">{{ account.platform.upper() }}</span>
+            {% if account.status == 'active' %}
+                <span class="badge badge-success">{{ account.status.upper() }}</span>
+            {% elif account.status == 'paused' %}
+                <span class="badge badge-warning">{{ account.status.upper() }}</span>
+            {% else %}
+                <span class="badge badge-danger">{{ account.status.upper() }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-secondary" onclick="refreshLinks()">REFRESH</button>
+        <button class="btn btn-primary" onclick="exportCSV()">EXPORT CSV</button>
+        <a href="{{ url_for('accounts_page') }}" class="btn btn-secondary">BACK</a>
+    </div>
+</div>
+
+<div class="grid grid-4 mb-4">
+    <div class="card">
+        <div class="stat-card">
+            <div class="stat-number" style="color: #1e3a8a;" id="total-links">0</div>
+            <div class="stat-label">TOTAL LINKS</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat-card">
+            <div class="stat-number" style="color: #1e3a8a;" id="recent-links">0</div>
+            <div class="stat-label">LAST 24H</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat-card">
+            <div class="stat-number" style="color: #000000;">
+                {{ account.last_checked.strftime('%Y-%m-%d') if account.last_checked else 'NEVER' }}
+            </div>
+            <div class="stat-label">LAST CHECKED</div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="stat-card">
+            <div class="stat-number" style="color: #000000;">
+                {{ account.created_at.strftime('%Y-%m-%d') if account.created_at else 'UNKNOWN' }}
+            </div>
+            <div class="stat-label">ADDED</div>
+        </div>
+    </div>
+</div>
+
+{% if account.last_error %}
+<div class="alert alert-error mb-4">
+    <strong>LAST ERROR:</strong> {{ account.last_error }}
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header flex flex-between">
+        <span>VIDEO LINKS</span>
+        <div class="flex gap-2 flex-center">
+            <span id="links-count">LOADING...</span>
+            <select class="form-input" id="page-size" style="width: 150px; height: 36px; font-size: 12px;">
+                <option value="25">25 PER PAGE</option>
+                <option value="50" selected>50 PER PAGE</option>
+                <option value="100">100 PER PAGE</option>
+            </select>
+        </div>
+    </div>
+    
+    <table class="table">
+        <thead>
+            <tr>
+                <th width="5%">#</th>
+                <th width="60%">VIDEO URL</th>
+                <th width="15%">DISCOVERED</th>
+                <th width="15%">POST DATE</th>
+                <th width="5%">ACTION</th>
+            </tr>
+        </thead>
+        <tbody id="links-table">
+            <tr>
+                <td colspan="5" class="text-center">
+                    <span class="loading"></span> LOADING VIDEO LINKS...
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div id="pagination" class="flex flex-center gap-2" style="display: none; padding: 20px 0; border-top: 1px solid #000000;">
+        <button class="btn btn-secondary" id="prev-btn" onclick="previousPage()">PREVIOUS</button>
+        <span id="page-info" style="font-size: 14px; font-weight: 500; padding: 0 20px;">PAGE 1 OF 1</span>
+        <button class="btn btn-secondary" id="next-btn" onclick="nextPage()">NEXT</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const accountId = {{ account.id }};
+let currentPage = 1;
+let currentPerPage = 50;
+let totalPages = 1;
+let allLinks = [];
+let paginationData = {};
+
+function refreshLinks() {
+    loadLinks(currentPage);
+}
+
+function loadLinks(page = 1) {
+    currentPage = page;
+    
+    fetch(`/api/accounts/${accountId}/links?page=${page}&per_page=${currentPerPage}`)
+        .then(response => response.json())
+        .then(data => {
+            allLinks = data.links;
+            paginationData = data.pagination;
+            updateLinksTable();
+            updateStats(data);
+            updatePagination();
+        })
+        .catch(error => {
+            console.error('Error loading links:', error);
+            showAlert('ERROR LOADING VIDEO LINKS', 'error');
+        });
+}
+
+function updateLinksTable() {
+    const tbody = document.getElementById('links-table');
+    
+    if (allLinks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">NO VIDEO LINKS FOUND</td></tr>';
+        return;
+    }
+    
+    let html = '';
+    allLinks.forEach((link, index) => {
+        const rowNumber = (currentPage - 1) * currentPerPage + index + 1;
+        
+        html += `
+            <tr>
+                <td style="font-weight: 500;">${rowNumber}</td>
+                <td>
+                    <a href="${link.url}" target="_blank" style="color: #1e3a8a; text-decoration: none; font-size: 12px; word-break: break-all;">
+                        ${link.url}
+                    </a>
+                </td>
+                <td style="font-size: 12px;">${formatDate(link.discovered_at)}</td>
+                <td style="font-size: 12px;">${link.post_date || 'N/A'}</td>
+                <td>
+                    <a href="${link.url}" target="_blank" class="btn btn-secondary" style="font-size: 11px; padding: 6px 12px; min-width: 60px;">OPEN</a>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function updateStats(data) {
+    const totalLinks = data.pagination.total;
+    document.getElementById('total-links').textContent = totalLinks;
+    
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const recentCount = allLinks.filter(link => {
+        return link.discovered_at && new Date(link.discovered_at) > yesterday;
+    }).length;
+    
+    document.getElementById('recent-links').textContent = recentCount;
+    
+    const start = (data.pagination.page - 1) * data.pagination.per_page + 1;
+    const end = Math.min(start + data.pagination.per_page - 1, totalLinks);
+    
+    document.getElementById('links-count').textContent = 
+        `${start}-${end} OF ${totalLinks} LINKS`;
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const pageInfo = document.getElementById('page-info');
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    
+    totalPages = paginationData.pages;
+    
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+    }
+    
+    pagination.style.display = 'flex';
+    pageInfo.textContent = `PAGE ${currentPage} OF ${totalPages}`;
+    
+    prevBtn.disabled = !paginationData.has_prev;
+    nextBtn.disabled = !paginationData.has_next;
+    
+    if (prevBtn.disabled) {
+        prevBtn.style.opacity = '0.5';
+        prevBtn.style.cursor = 'not-allowed';
+    } else {
+        prevBtn.style.opacity = '1';
+        prevBtn.style.cursor = 'pointer';
+    }
+    
+    if (nextBtn.disabled) {
+        nextBtn.style.opacity = '0.5';
+        nextBtn.style.cursor = 'not-allowed';
+    } else {
+        nextBtn.style.opacity = '1';
+        nextBtn.style.cursor = 'pointer';
+    }
+}
+
+function previousPage() {
+    if (paginationData.has_prev) {
+        loadLinks(currentPage - 1);
+    }
+}
+
+function nextPage() {
+    if (paginationData.has_next) {
+        loadLinks(currentPage + 1);
+    }
+}
+
+function exportCSV() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> EXPORTING...';
+    
+    fetch(`/api/accounts/${accountId}/links/export`)
+        .then(response => {
+            if (response.ok) {
+                return response.blob();
+            }
+            throw new Error('Export failed');
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `{{ account.username }}_{{ account.platform }}_links.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showAlert('CSV EXPORT COMPLETED SUCCESSFULLY');
+        })
+        .catch(error => {
+            console.error('Error exporting CSV:', error);
+            showAlert('ERROR EXPORTING CSV', 'error');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = 'EXPORT CSV';
+        });
+}
+
+document.getElementById('page-size').addEventListener('change', function(e) {
+    currentPerPage = parseInt(e.target.value);
+    loadLinks(1);
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadLinks();
+});
+</script>
+{% endblock %}
