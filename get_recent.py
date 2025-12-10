@@ -25,6 +25,7 @@ import os
 from Functions.instagram_links import instagram_scraper_recent
 from Functions.instagram_links_playwright import instagram_scraper_recent_playwright
 from Functions.tiktok_links import tiktok_scraper_recent
+from Functions.tiktok_links_ytdlp import tiktok_scraper_recent_ytdlp
 from Functions.x_links import x_scraper_recent
 from Functions.fb_links import facebook_scraper_recent
 from Functions.youtube_links import youtube_scraper_recent
@@ -260,6 +261,11 @@ class OperationQueueProcessor:
                 video_links = youtube_scraper_recent(
                     None, operation.account_url, scraper_config['youtube_cookies'], max_videos=5
                 )
+            elif operation.platform == 'tiktok':
+                # TikTok uses yt-dlp (no browser needed)
+                video_links = tiktok_scraper_recent_ytdlp(
+                    operation.account_url, max_posts=5
+                )
             elif operation.platform == 'instagram':
                 # Instagram uses Playwright
                 cookie_manager = CookieManager('instagram')
@@ -281,11 +287,7 @@ class OperationQueueProcessor:
                 # Other platforms use Selenium
                 driver = self.scraper.create_driver()
                 
-                if operation.platform == 'tiktok':
-                    video_links = tiktok_scraper_recent(
-                        driver, operation.account_url, scraper_config['unified_cookies'], limited_scrolls
-                    )
-                elif operation.platform == 'x':
+                if operation.platform == 'x':
                     video_links = x_scraper_recent(
                         driver, operation.account_url, scraper_config['unified_cookies'], limited_scrolls
                     )

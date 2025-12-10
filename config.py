@@ -45,9 +45,16 @@ LOGS_DIR = Path('./logs')
 HEADLESS_ENV_VALUE = os.getenv('HEADLESS', 'TRUE')
 HEADLESS_MODE = HEADLESS_ENV_VALUE.upper() == 'TRUE'  # Read from .env file
 
+# Proxy configuration
+PROXY = os.getenv('PROXY', None)  # Optional proxy setting
+
 # Debug output for headless mode (using print since logging not configured yet)
 print(f"[CONFIG] HEADLESS env value: '{HEADLESS_ENV_VALUE}'")
 print(f"[CONFIG] HEADLESS_MODE: {HEADLESS_MODE} (False = visible browser, True = hidden browser)")
+if PROXY:
+    # Mask proxy credentials in logs
+    proxy_display = PROXY.split('@')[1] if '@' in PROXY else PROXY
+    print(f"[CONFIG] PROXY: enabled ({proxy_display})")
 
 CHROME_VERSION = 139  # Chrome version for undetected-chromedriver
 # Auto-detect Chrome path based on OS (None = let undetected-chromedriver auto-detect)
