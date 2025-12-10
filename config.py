@@ -9,7 +9,15 @@ This file contains all configuration settings for the scraper including:
 """
 
 import logging
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (explicit path, override=True to override system env vars)
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+print(f"[CONFIG] Loading .env from: {env_path}")
+print(f"[CONFIG] .env file exists: {env_path.exists()}")
 
 # =============================================================================
 # FILE PATHS AND DIRECTORIES
@@ -33,10 +41,17 @@ LOGS_DIR = Path('./logs')
 # BROWSER CONFIGURATION
 # =============================================================================
 
-# Browser settings
-HEADLESS_MODE = True  # Set to True to run browser in headless mode (no GUI)
+# Browser settings - Load from .env file
+HEADLESS_ENV_VALUE = os.getenv('HEADLESS', 'TRUE')
+HEADLESS_MODE = HEADLESS_ENV_VALUE.upper() == 'TRUE'  # Read from .env file
+
+# Debug output for headless mode (using print since logging not configured yet)
+print(f"[CONFIG] HEADLESS env value: '{HEADLESS_ENV_VALUE}'")
+print(f"[CONFIG] HEADLESS_MODE: {HEADLESS_MODE} (False = visible browser, True = hidden browser)")
+
 CHROME_VERSION = 139  # Chrome version for undetected-chromedriver
-CHROME_BINARY_PATH = "/usr/bin/google-chrome"  # Explicit Chrome binary path
+# Auto-detect Chrome path based on OS (None = let undetected-chromedriver auto-detect)
+CHROME_BINARY_PATH = None  # Will auto-detect Chrome installation
 
 # Chrome browser arguments
 CHROME_ARGUMENTS = [

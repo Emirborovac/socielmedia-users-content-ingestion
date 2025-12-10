@@ -11,3 +11,5 @@ psutil
 gunicorn
 fastapi
 uvicorn
+python-dotenv
+playwright

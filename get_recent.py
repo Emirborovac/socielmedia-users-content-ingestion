@@ -23,13 +23,17 @@ import os
 
 # Import scraper functions
 from Functions.instagram_links import instagram_scraper_recent
+from Functions.instagram_links_playwright import instagram_scraper_recent_playwright
 from Functions.tiktok_links import tiktok_scraper_recent
 from Functions.x_links import x_scraper_recent
 from Functions.fb_links import facebook_scraper_recent
 from Functions.youtube_links import youtube_scraper_recent
 
 # Import scraper class for driver creation and platform identification
-from app import SocialMediaScraper
+from scraper_helper import SocialMediaScraper
+
+# Import cookie manager for cookie rotation and failure tracking
+from cookie_manager import CookieManager
 
 # Configure logging
 config.configure_logging()
@@ -215,6 +219,10 @@ class OperationQueueProcessor:
     def _process_operation(self, operation: Operation, db):
         """Process a single operation"""
         driver = None
+        playwright = None
+        browser = None
+        context = None
+        page = None
         
         try:
             # Update status to processing
@@ -246,19 +254,34 @@ class OperationQueueProcessor:
             
             # Scrape videos
             video_links = []
+            cookie_path = None  # Track cookie path for success/failure marking
             
             if operation.platform == 'youtube':
                 video_links = youtube_scraper_recent(
                     None, operation.account_url, scraper_config['youtube_cookies'], max_videos=5
                 )
+            elif operation.platform == 'instagram':
+                # Instagram uses Playwright
+                cookie_manager = CookieManager('instagram')
+                cookie_path = cookie_manager.get_active_cookie()
+                
+                if not cookie_path:
+                    raise Exception("No active Instagram cookies available")
+                
+                logging.info(f"Using Instagram cookie: {cookie_path}")
+                
+                # Create Playwright browser
+                playwright, browser, context, page = self.scraper.create_playwright_browser()
+                
+                # Scrape with Playwright
+                video_links = instagram_scraper_recent_playwright(
+                    page, operation.account_url, cookie_path, limited_scrolls
+                )
             else:
+                # Other platforms use Selenium
                 driver = self.scraper.create_driver()
                 
-                if operation.platform == 'instagram':
-                    video_links = instagram_scraper_recent(
-                        driver, operation.account_url, scraper_config['unified_cookies'], limited_scrolls
-                    )
-                elif operation.platform == 'tiktok':
+                if operation.platform == 'tiktok':
                     video_links = tiktok_scraper_recent(
                         driver, operation.account_url, scraper_config['unified_cookies'], limited_scrolls
                     )
@@ -310,11 +333,22 @@ class OperationQueueProcessor:
             
             db.commit()
             
+            # Mark cookie as successful (for Instagram)
+            if operation.platform == 'instagram' and cookie_path:
+                cookie_manager = CookieManager('instagram')
+                cookie_manager.mark_success(cookie_path)
+            
             logging.info(f"Operation {operation.operation_id} completed: {len(saved_links)} videos found")
             
         except Exception as e:
             error_msg = str(e)
             logging.error(f"Error processing operation {operation.operation_id}: {error_msg}")
+            
+            # Mark cookie as failed (for Instagram)
+            if operation.platform == 'instagram' and cookie_path:
+                cookie_manager = CookieManager('instagram')
+                failure_count = cookie_manager.mark_failure(cookie_path)
+                logging.warning(f"Instagram cookie failure count: {failure_count}")
             
             # Update operation with error
             operation.status = 'failed'
@@ -336,7 +370,29 @@ class OperationQueueProcessor:
             db.commit()
             
         finally:
-            # Cleanup driver
+            # Cleanup Playwright resources (for Instagram)
+            if page:
+                try:
+                    page.close()
+                except:
+                    pass
+            if context:
+                try:
+                    context.close()
+                except:
+                    pass
+            if browser:
+                try:
+                    browser.close()
+                except:
+                    pass
+            if playwright:
+                try:
+                    playwright.stop()
+                except:
+                    pass
+            
+            # Cleanup Selenium driver (for other platforms)
             if driver:
                 try:
                     driver.quit()
@@ -376,6 +432,74 @@ async def shutdown_event():
     """Stop the queue processor on shutdown"""
     logging.info("Stopping operation queue processor...")
     queue_processor.stop()
+
+
+@app.get("/get_recent/results/{operation_id}")
+async def get_results(operation_id: str):
+    """
+    Get the results of a queued operation.
+    
+    Args:
+        operation_id: The operation ID returned from /get_recent/{account_identifier}
+    
+    Returns:
+        {
+            "success": bool,
+            "body": {
+                "status": "pending|processing|completed|failed",
+                "links": [array of video links] (only if completed),
+                "error": error message (only if failed)
+            },
+            "error": null or error message
+        }
+    """
+    db = SessionLocal()
+    
+    try:
+        operation = db.query(Operation).filter_by(operation_id=operation_id).first()
+        
+        if not operation:
+            db.close()
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "body": {},
+                    "error": f"Operation {operation_id} not found"
+                }
+            )
+        
+        response_body = {
+            "status": operation.status,
+            "operation_id": operation.operation_id,
+            "account_url": operation.account_url,
+            "platform": operation.platform,
+            "username": operation.username
+        }
+        
+        if operation.status == 'completed':
+            response_body["links"] = operation.result_links if operation.result_links else []
+        elif operation.status == 'failed':
+            response_body["error"] = operation.error_message
+        
+        return {
+            "success": True,
+            "body": response_body,
+            "error": None
+        }
+        
+    except Exception as e:
+        error_msg = str(e)
+        logging.error(f"Error getting results: {error_msg}")
+        
+        return {
+            "success": False,
+            "body": {},
+            "error": error_msg
+        }
+        
+    finally:
+        db.close()
 
 
 @app.get("/get_recent/{account_identifier:path}")
@@ -441,74 +565,6 @@ async def get_recent(account_identifier: str):
     except Exception as e:
         error_msg = str(e)
         logging.error(f"Error queuing operation: {error_msg}")
-        
-        return {
-            "success": False,
-            "body": {},
-            "error": error_msg
-        }
-        
-    finally:
-        db.close()
-
-
-@app.get("/get_recent/results/{operation_id}")
-async def get_results(operation_id: str):
-    """
-    Get the results of a queued operation.
-    
-    Args:
-        operation_id: The operation ID returned from /get_recent/{account_identifier}
-    
-    Returns:
-        {
-            "success": bool,
-            "body": {
-                "status": "pending|processing|completed|failed",
-                "links": [array of video links] (only if completed),
-                "error": error message (only if failed)
-            },
-            "error": null or error message
-        }
-    """
-    db = SessionLocal()
-    
-    try:
-        operation = db.query(Operation).filter_by(operation_id=operation_id).first()
-        
-        if not operation:
-            db.close()
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "success": False,
-                    "body": {},
-                    "error": f"Operation {operation_id} not found"
-                }
-            )
-        
-        response_body = {
-            "status": operation.status,
-            "operation_id": operation.operation_id,
-            "account_url": operation.account_url,
-            "platform": operation.platform,
-            "username": operation.username
-        }
-        
-        if operation.status == 'completed':
-            response_body["links"] = operation.result_links if operation.result_links else []
-        elif operation.status == 'failed':
-            response_body["error"] = operation.error_message
-        
-        return {
-            "success": True,
-            "body": response_body,
-            "error": None
-        }
-        
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"Error getting results: {error_msg}")
         
         return {
             "success": False,

@@ -29,6 +29,9 @@ from Functions.x_links import x_scraper_recent
 from Functions.fb_links import facebook_scraper_recent
 from Functions.youtube_links import youtube_scraper_recent
 
+# Import base scraper class
+from scraper_helper import SocialMediaScraper as BaseScraper
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = config.DATABASE_URL
@@ -136,101 +139,10 @@ class SystemSettings(db.Model):
 # SCRAPER CLASS
 # =============================================================================
 
-class SocialMediaScraper:
-    """Main scraper class for handling all platforms"""
+class SocialMediaScraper(BaseScraper):
+    """Flask-specific scraper class that extends base scraper with account scraping"""
     
-    def __init__(self):
-        self.config = config.get_default_config()
-        # Create debug screenshots directory
-        self.debug_dir = "/home/root01/links-scraper-v2/debugger-screenshots"
-        os.makedirs(self.debug_dir, exist_ok=True)
-    
-    def setup_chrome_options(self):
-        """Setup Chrome options for WebDriver"""
-        chrome_options = uc.ChromeOptions()
-        
-        # Set Chrome binary path explicitly
-        chrome_options.binary_location = config.CHROME_BINARY_PATH
-        
-        # Add Chrome arguments from config
-        for arg in config.CHROME_ARGUMENTS:
-            chrome_options.add_argument(arg)
-        
-        if self.config['headless_mode']:
-            chrome_options.add_argument("--headless")
-            
-        return chrome_options
-    
-    def debug_screenshot(self, driver, step_name):
-        """Take debug screenshot to see what browser is showing"""
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{step_name}_{timestamp}.png"
-            filepath = os.path.join(self.debug_dir, filename)
-            driver.save_screenshot(filepath)
-            logging.info(f"Debug screenshot saved: {filepath}")
-        except Exception as e:
-            logging.warning(f"Could not save debug screenshot: {e}")
-    
-    def create_driver(self):
-        """Create Chrome WebDriver instance"""
-        try:
-            # Try with version specification first
-            chrome_options = self.setup_chrome_options()
-            driver = uc.Chrome(options=chrome_options, version_main=config.CHROME_VERSION)
-            
-            # Take debug screenshot to verify it's working
-            self.debug_screenshot(driver, "driver_created")
-            return driver
-        except Exception as e:
-            logging.warning(f"Failed to create driver with Chrome version {config.CHROME_VERSION}: {e}")
-            try:
-                # Fallback to auto-detection with fresh options
-                chrome_options = self.setup_chrome_options()
-                driver = uc.Chrome(options=chrome_options)
-                
-                # Take debug screenshot to verify it's working
-                self.debug_screenshot(driver, "driver_created_auto")
-                return driver
-            except Exception as e:
-                logging.error(f"Failed to create driver with auto-detection: {e}")
-                # Last resort: use system Chrome with WebDriverManager
-                try:
-                    regular_options = webdriver.ChromeOptions()
-                    # Add Chrome arguments from config
-                    for arg in config.CHROME_ARGUMENTS:
-                        regular_options.add_argument(arg)
-                    
-                    if self.config['headless_mode']:
-                        regular_options.add_argument("--headless")
-                    
-                    service = Service(ChromeDriverManager().install())
-                    driver = webdriver.Chrome(service=service, options=regular_options)
-                    
-                    # Take debug screenshot to verify it's working
-                    self.debug_screenshot(driver, "driver_created_fallback")
-                    return driver
-                except Exception as e:
-                    logging.error(f"All driver creation methods failed: {e}")
-                    raise Exception("Could not create Chrome driver")
-    
-    def identify_platform(self, url: str) -> str:
-        """Identify social media platform from URL"""
-        url = str(url).lower()
-        if 'instagram.com' in url:
-            return 'instagram'
-        elif 'tiktok.com' in url:
-            return 'tiktok'
-        elif 'x.com' in url or 'twitter.com' in url:
-            return 'x'
-        elif 'facebook.com' in url or 'fb.com' in url:
-            return 'facebook'
-        elif 'youtube.com' in url or 'youtu.be' in url:
-            return 'youtube'
-        else:
-            return 'unknown'
-    
-    def scrape_account(self, account: Account, scheduler=None) -> list:
+    def scrape_account(self, account, scheduler=None) -> list:
         """Scrape a single account for recent videos"""
         platform = account.platform
         account_url = account.url
