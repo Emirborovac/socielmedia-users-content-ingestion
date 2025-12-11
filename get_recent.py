@@ -6,7 +6,7 @@ Uses async queue system with SQLite persistence:
 - GET /get_recent/results/{operation_id} - Check operation status and get results
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
@@ -29,6 +29,7 @@ from Functions.tiktok_links_ytdlp import tiktok_scraper_recent_ytdlp
 from Functions.x_links import x_scraper_recent
 from Functions.fb_links import facebook_scraper_recent
 from Functions.youtube_links import youtube_scraper_recent
+from Functions.youtube_links_ytdlp import youtube_scraper_recent_ytdlp
 
 # Import scraper class for driver creation and platform identification
 from scraper_helper import SocialMediaScraper
@@ -258,8 +259,16 @@ class OperationQueueProcessor:
             cookie_path = None  # Track cookie path for success/failure marking
             
             if operation.platform == 'youtube':
-                video_links = youtube_scraper_recent(
-                    None, operation.account_url, scraper_config['youtube_cookies'], max_videos=5
+                # Extract content type from URL (/videos or /shorts)
+                content_type = 'shorts'  # default
+                if '/videos' in operation.account_url:
+                    content_type = 'videos'
+                elif '/shorts' in operation.account_url:
+                    content_type = 'shorts'
+                
+                # Use new yt-dlp scraper
+                video_links = youtube_scraper_recent_ytdlp(
+                    operation.account_url, content_type=content_type, max_posts=5
                 )
             elif operation.platform == 'tiktok':
                 # TikTok uses yt-dlp (no browser needed)
@@ -505,13 +514,17 @@ async def get_results(operation_id: str):
 
 
 @app.get("/get_recent/{account_identifier:path}")
-async def get_recent(account_identifier: str):
+async def get_recent(
+    account_identifier: str,
+    type: str = Query("shorts", description="For YouTube: 'videos' or 'shorts' (default: shorts)")
+):
     """
     Queue a request to get recent 5 video posts from a social media account.
     Returns immediately with operation_id.
     
     Args:
         account_identifier: Full URL or username (e.g., 'instagram.com/username' or 'username')
+        type: For YouTube only - 'videos' or 'shorts' (default: shorts)
     
     Returns:
         {
@@ -542,10 +555,18 @@ async def get_recent(account_identifier: str):
         # Generate operation ID
         operation_id = str(uuid.uuid4())
         
+        # For YouTube, append content type to URL for processing
+        final_url = account_url
+        if platform == 'youtube':
+            # Ensure URL ends with /videos or /shorts
+            if '/videos' not in final_url and '/shorts' not in final_url:
+                final_url = final_url.rstrip('/') + f"/{type}"
+            logging.info(f"YouTube URL with type: {final_url}")
+        
         # Create operation record
         operation = Operation(
             operation_id=operation_id,
-            account_url=account_url,
+            account_url=final_url,  # For YouTube, includes /videos or /shorts
             platform=platform,
             username=username,
             status='pending'
