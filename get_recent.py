@@ -27,7 +27,9 @@ from Functions.instagram_links_playwright import instagram_scraper_recent_playwr
 from Functions.tiktok_links import tiktok_scraper_recent
 from Functions.tiktok_links_ytdlp import tiktok_scraper_recent_ytdlp
 from Functions.x_links import x_scraper_recent
+from Functions.x_links_playwright import x_scraper_recent_playwright
 from Functions.fb_links import facebook_scraper_recent
+from Functions.facebook_links_playwright import facebook_scraper_recent_playwright
 from Functions.youtube_links import youtube_scraper_recent
 from Functions.youtube_links_ytdlp import youtube_scraper_recent_ytdlp
 from Functions.telegram_links import telegram_scraper_recent
@@ -312,18 +314,56 @@ class OperationQueueProcessor:
                 video_links = instagram_scraper_recent_playwright(
                     page, operation.account_url, cookie_path, limited_scrolls
                 )
-            else:
-                # Other platforms use Selenium
-                driver = self.scraper.create_driver()
+            elif operation.platform == 'facebook':
+                # Facebook uses Playwright (like Instagram)
+                cookie_manager = CookieManager('facebook')
+                cookie_file = cookie_manager.get_active_cookie()
                 
-                if operation.platform == 'x':
-                    video_links = x_scraper_recent(
-                        driver, operation.account_url, scraper_config['unified_cookies'], limited_scrolls
-                    )
-                elif operation.platform == 'facebook':
-                    video_links = facebook_scraper_recent(
-                        driver, operation.account_url, scraper_config['facebook_cookies'], limited_scrolls
-                    )
+                if cookie_file:
+                    logging.info(f"Using Facebook cookie: {cookie_file}")
+                    try:
+                        video_links = facebook_scraper_recent_playwright(
+                            operation.account_url, 
+                            cookie_file=cookie_file, 
+                            max_posts=5
+                        )
+                        
+                        # Mark success
+                        cookie_manager.mark_success(cookie_file)
+                    except Exception as e:
+                        logging.error(f"Facebook scraping failed: {e}")
+                        cookie_manager.mark_failure(cookie_file)
+                        video_links = []
+                else:
+                    logging.error("No Facebook cookies available")
+                    video_links = []
+            elif operation.platform == 'x':
+                # X/Twitter uses Playwright
+                cookie_manager = CookieManager('x')
+                cookie_file = cookie_manager.get_active_cookie()
+                
+                if cookie_file:
+                    logging.info(f"Using X/Twitter cookie: {cookie_file}")
+                    try:
+                        video_links = x_scraper_recent_playwright(
+                            operation.account_url, 
+                            cookie_file=cookie_file, 
+                            max_posts=5
+                        )
+                        
+                        # Mark success
+                        cookie_manager.mark_success(cookie_file)
+                    except Exception as e:
+                        logging.error(f"X/Twitter scraping failed: {e}")
+                        cookie_manager.mark_failure(cookie_file)
+                        video_links = []
+                else:
+                    logging.error("No X/Twitter cookies available")
+                    video_links = []
+            else:
+                # Unknown platform
+                logging.error(f"Unsupported platform: {operation.platform}")
+                video_links = []
             
             # Limit to exactly 5 posts
             video_links = video_links[:5]
