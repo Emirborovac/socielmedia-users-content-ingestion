@@ -91,10 +91,10 @@ def facebook_scraper_recent_playwright(account_url: str, cookie_file: str = None
             page.wait_for_timeout(3000)
             
             # Scroll to load posts
-            for scroll in range(4):
+            for scroll in range(6):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(2000)
-                logging.info(f"Scroll {scroll + 1}/4")
+                page.wait_for_timeout(2500)
+                logging.info(f"Scroll {scroll + 1}/6")
             
             # Extract post links
             # Look for common Facebook post link patterns
