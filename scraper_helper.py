@@ -23,9 +23,6 @@ class SocialMediaScraper:
     
     def __init__(self):
         self.config = config.get_default_config()
-        # Create debug screenshots directory
-        self.debug_dir = "./debugger-screenshots"
-        os.makedirs(self.debug_dir, exist_ok=True)
     
     def setup_chrome_options(self):
         """Setup Chrome options for WebDriver"""
@@ -45,17 +42,6 @@ class SocialMediaScraper:
             
         return chrome_options
     
-    def debug_screenshot(self, driver, step_name):
-        """Take debug screenshot to see what browser is showing"""
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{step_name}_{timestamp}.png"
-            filepath = os.path.join(self.debug_dir, filename)
-            driver.save_screenshot(filepath)
-            logging.info(f"Debug screenshot saved: {filepath}")
-        except Exception as e:
-            logging.warning(f"Could not save debug screenshot: {e}")
-    
     def create_driver(self):
         """Create Chrome WebDriver instance"""
         logging.info("Creating Chrome driver... (this may take 30-60 seconds on first run)")
@@ -65,9 +51,6 @@ class SocialMediaScraper:
             chrome_options = self.setup_chrome_options()
             logging.info(f"Attempting to create driver with Chrome version {config.CHROME_VERSION}...")
             driver = uc.Chrome(options=chrome_options, version_main=config.CHROME_VERSION)
-            
-            # Take debug screenshot to verify it's working
-            self.debug_screenshot(driver, "driver_created")
             return driver
         except Exception as e:
             logging.warning(f"Failed to create driver with Chrome version {config.CHROME_VERSION}: {e}")
@@ -76,9 +59,6 @@ class SocialMediaScraper:
                 logging.info("Attempting driver creation with auto-detection...")
                 chrome_options = self.setup_chrome_options()
                 driver = uc.Chrome(options=chrome_options)
-                
-                # Take debug screenshot to verify it's working
-                self.debug_screenshot(driver, "driver_created_auto")
                 return driver
             except Exception as e:
                 logging.error(f"Failed to create driver with auto-detection: {e}")
@@ -95,9 +75,6 @@ class SocialMediaScraper:
                     
                     service = Service(ChromeDriverManager().install())
                     driver = webdriver.Chrome(service=service, options=regular_options)
-                    
-                    # Take debug screenshot to verify it's working
-                    self.debug_screenshot(driver, "driver_created_fallback")
                     logging.info("✅ Chrome driver created successfully!")
                     return driver
                 except Exception as e:

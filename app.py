@@ -167,9 +167,6 @@ class SocialMediaScraper(BaseScraper):
                 if scheduler:
                     scheduler.active_drivers.append(driver)
                 
-                # Take screenshot before scraping
-                self.debug_screenshot(driver, f"before_scraping_{platform}")
-                
                 # Call appropriate scraper based on platform
                 if platform == 'instagram':
                     video_links = instagram_scraper_recent(
@@ -187,10 +184,6 @@ class SocialMediaScraper(BaseScraper):
                     video_links = facebook_scraper_recent(
                         driver, account_url, self.config['facebook_cookies'], max_scrolls
                     )
-                
-                # Take screenshot after scraping
-                if driver:
-                    self.debug_screenshot(driver, f"after_scraping_{platform}")
             
             logging.info(f"Found {len(video_links)} videos for {account.username}")
             
