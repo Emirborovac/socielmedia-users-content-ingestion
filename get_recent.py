@@ -164,12 +164,18 @@ def normalize_account_url(account_identifier: str) -> tuple:
         username = url.split('facebook.com/')[-1].split('/')[0].split('?')[0]
         url = f"https://www.facebook.com/{username}"
     elif platform == 'youtube':
-        # YouTube URLs are more complex - preserve the original format
-        if '/channel/' in url or '/user/' in url or '/@' in url:
-            username = url.split('/')[-1].split('?')[0]
+        # YouTube URLs - extract channel name, not /videos or /shorts
+        if '/@' in url:
+            # Format: youtube.com/@MrBeast or youtube.com/@MrBeast/videos
+            username = url.split('/@')[1].split('/')[0].split('?')[0]
+        elif '/channel/' in url:
+            username = url.split('/channel/')[1].split('/')[0].split('?')[0]
+        elif '/user/' in url:
+            username = url.split('/user/')[1].split('/')[0].split('?')[0]
         else:
             username = url.split('youtube.com/')[-1].split('/')[0].split('?')[0]
-        # Keep original URL format for YouTube
+        
+        # Keep original URL format for YouTube (preserve /videos or /shorts)
         if not url.startswith('http'):
             url = f"https://www.youtube.com/{username}"
     elif platform == 'telegram':
