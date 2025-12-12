@@ -48,6 +48,11 @@ HEADLESS_MODE = HEADLESS_ENV_VALUE.upper() == 'TRUE'  # Read from .env file
 # Proxy configuration
 PROXY = os.getenv('PROXY', None)  # Optional proxy setting
 
+# Telegram configuration
+TELEGRAM_API_ID = os.getenv('TELEGRAM_API_ID', '31485887')
+TELEGRAM_API_HASH = os.getenv('TELEGRAM_API_HASH', '92bff248d4fbcf62e4f9b4af924ebf3c')
+TELEGRAM_SESSION = os.getenv('TELEGRAM_SESSION', 'tg_recent_posts')
+
 # Debug output for headless mode (using print since logging not configured yet)
 print(f"[CONFIG] HEADLESS env value: '{HEADLESS_ENV_VALUE}'")
 print(f"[CONFIG] HEADLESS_MODE: {HEADLESS_MODE} (False = visible browser, True = hidden browser)")

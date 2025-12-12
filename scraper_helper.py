@@ -156,6 +156,8 @@ class SocialMediaScraper:
             return 'facebook'
         elif 'youtube.com' in url or 'youtu.be' in url:
             return 'youtube'
+        elif 't.me' in url or url.startswith('@'):
+            return 'telegram'
         else:
             return 'unknown'
 

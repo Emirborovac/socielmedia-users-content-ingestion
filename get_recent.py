@@ -30,6 +30,7 @@ from Functions.x_links import x_scraper_recent
 from Functions.fb_links import facebook_scraper_recent
 from Functions.youtube_links import youtube_scraper_recent
 from Functions.youtube_links_ytdlp import youtube_scraper_recent_ytdlp
+from Functions.telegram_links import telegram_scraper_recent
 
 # Import scraper class for driver creation and platform identification
 from scraper_helper import SocialMediaScraper
@@ -132,8 +133,11 @@ def normalize_account_url(account_identifier: str) -> tuple:
         url = identifier
     else:
         # If it contains platform domain, add https://
-        if 'instagram.com' in identifier or 'tiktok.com' in identifier or 'x.com' in identifier or 'twitter.com' in identifier or 'facebook.com' in identifier or 'youtube.com' in identifier:
+        if 'instagram.com' in identifier or 'tiktok.com' in identifier or 'x.com' in identifier or 'twitter.com' in identifier or 'facebook.com' in identifier or 'youtube.com' in identifier or 't.me' in identifier:
             url = f"https://{identifier}"
+        elif identifier.startswith('@'):
+            # Could be Telegram @username
+            url = identifier  # Keep as-is, platform detection will handle it
         else:
             # Assume it's just a username - default to Instagram
             url = f"https://www.instagram.com/{identifier}"
@@ -166,6 +170,17 @@ def normalize_account_url(account_identifier: str) -> tuple:
         # Keep original URL format for YouTube
         if not url.startswith('http'):
             url = f"https://www.youtube.com/{username}"
+    elif platform == 'telegram':
+        # Telegram handling
+        if 't.me/' in url:
+            username = url.split('t.me/')[-1].split('/')[0].split('?')[0]
+        elif url.startswith('@'):
+            username = url[1:]  # Remove @
+        else:
+            username = url.split('/')[-1].split('?')[0]
+        
+        # Normalize to @username format for Telegram
+        url = f"@{username}" if not username.startswith('@') else username
     else:
         username = url.split('/')[-1].split('?')[0]
     
@@ -273,6 +288,11 @@ class OperationQueueProcessor:
             elif operation.platform == 'tiktok':
                 # TikTok uses yt-dlp (no browser needed)
                 video_links = tiktok_scraper_recent_ytdlp(
+                    operation.account_url, max_posts=5
+                )
+            elif operation.platform == 'telegram':
+                # Telegram uses Telethon (no browser needed)
+                video_links = telegram_scraper_recent(
                     operation.account_url, max_posts=5
                 )
             elif operation.platform == 'instagram':
